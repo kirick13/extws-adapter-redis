@@ -1,13 +1,13 @@
 {
 	"name": "extws-adapter-redis",
-	"version": "1.0.0-beta.114",
+	"version": "1.0.0",
 	"description": "Redis-based adapter for ExtWS server.",
+	"publishConfig": {
+		"--tag": "beta"
+	},
 	"main": "main.js",
 	"engines": {
 		"node": ">10.0.0"
-	},
-	"scripts": {
-		"test": "echo \"Error: no test specified\" && exit 1"
 	},
 	"repository": {
 		"type": "git",

@@ -2,7 +2,7 @@
 const crypto = require('crypto');
 
 const REDIS_PUBSUB_CHANNEL = 'extws';
-const REGEXP_PAYLOAD_SPLIT = /^(.{8})([0-2])([^%]+)?%/;
+const REGEXP_PAYLOAD_SPLIT = /^(.{8})([0-2])([^%]+)?%/; // adapter_id (8 symbols), target type (1 symbol), target_id (cannot contain "%", can be omitted), symbol "%", payload
 
 const REDIS_TARGET_TYPES = {
 	SOCKET   : '0',
@@ -28,14 +28,30 @@ class ExtWSRedisAdapter {
 			console.error,
 		);
 
-		sub_client.subscribe(
-			REDIS_PUBSUB_CHANNEL,
-			() => {},
-		);
-		sub_client.on(
-			'message',
-			(redis_channel, redis_message) => this._onMessage(redis_channel, redis_message),
-		);
+		// npm redis v4+
+		if ('Commander' === sub_client.constructor.name) {
+			sub_client.subscribe(
+				REDIS_PUBSUB_CHANNEL,
+				(redis_message) => {
+					this._onMessage(redis_message);
+				},
+			);
+		}
+		// npm redis 3-
+		else {
+			sub_client.subscribe(
+				REDIS_PUBSUB_CHANNEL,
+				() => {},
+			);
+			sub_client.on(
+				'message',
+				(redis_channel, redis_message) => {
+					if (redis_channel.toString() === REDIS_PUBSUB_CHANNEL) {
+						this._onMessage(redis_message);
+					}
+				},
+			);
+		}
 		sub_client.on(
 			'error',
 			console.error,
@@ -74,40 +90,38 @@ class ExtWSRedisAdapter {
 		);
 	}
 
-	_onMessage (redis_channel, redis_message) {
-		if (redis_channel.toString() === REDIS_PUBSUB_CHANNEL) {
-			redis_message = redis_message.toString();
+	_onMessage (redis_message) {
+		redis_message = redis_message.toString();
 
-			const [ matched, adapter_id, type, dest_id ] = redis_message.match(REGEXP_PAYLOAD_SPLIT);
+		const [ matched, adapter_id, type, dest_id ] = redis_message.match(REGEXP_PAYLOAD_SPLIT);
 
-			if (adapter_id !== this.id) {
-				const payload = redis_message.slice(matched.length);
+		if (adapter_id !== this.id) {
+			const payload = redis_message.slice(matched.length);
 
-				let socket_id = null;
-				let group_id = null;
-				let is_broadcast = false;
+			let socket_id = null;
+			let group_id = null;
+			let is_broadcast = false;
 
-				switch (type) {
-					case REDIS_TARGET_TYPES.SOCKET:
-						socket_id = dest_id;
-					break;
-					case REDIS_TARGET_TYPES.GROUP:
-						group_id = dest_id;
-					break;
-					case REDIS_TARGET_TYPES.BROADCAST:
-						is_broadcast = true;
-					break;
-					// no default
-				}
-
-				this._server._sendPayload(
-					payload,
-					socket_id,
-					group_id,
-					is_broadcast,
-					true, // is_from_adapter
-				);
+			switch (type) {
+				case REDIS_TARGET_TYPES.SOCKET:
+					socket_id = dest_id;
+				break;
+				case REDIS_TARGET_TYPES.GROUP:
+					group_id = dest_id;
+				break;
+				case REDIS_TARGET_TYPES.BROADCAST:
+					is_broadcast = true;
+				break;
+				// no default
 			}
+
+			this._server._sendPayload(
+				payload,
+				socket_id,
+				group_id,
+				is_broadcast,
+				true, // is_from_adapter
+			);
 		}
 	}
 }
